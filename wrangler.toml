@@ -1,0 +1,10 @@
+name = "tobys-quest-api"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# KV namespace -- you'll create this and paste the ID below
+# Run:  wrangler kv namespace create QUEST_DATA
+# Then replace the id value with the one it gives you
+[[kv_namespaces]]
+binding = "QUEST_DATA"
+id = "f56415a3cf9b4895a32b4d494230b2ff"

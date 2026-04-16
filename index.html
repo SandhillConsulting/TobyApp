@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a1a">
+<title>Toby's Quest</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏅</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0a0a1a;
+    --bg-mid: #0f172a;
+    --bg-surface: #1e293b;
+    --bg-card: #1a1a2e;
+    --border: #334155;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --text-faint: #475569;
+    --green: #22c55e;
+    --gold: #f59e0b;
+    --red: #ef4444;
+    --blue: #3B82F6;
+    --purple: #8B5CF6;
+    --cyan: #06B6D4;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-mid) 40%, var(--bg-card) 100%);
+    color: var(--text-primary);
+    min-height: 100vh;
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 16px 32px;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  button {
+    font-family: 'DM Sans', sans-serif;
+    transition: transform 0.1s, opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  button:active { transform: scale(0.96); }
+
+  .font-display { font-family: 'Fredoka', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Animations */
+  @keyframes popIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes popScale { from { transform: scale(0.7); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  .anim-slide-up { animation: slideUp 0.35s ease-out; }
+  .anim-fade { animation: fadeIn 0.3s ease-out; }
+
+  /* Overlay */
+  .overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+    animation: popIn 0.3s ease-out;
+  }
+  .overlay-card {
+    background: linear-gradient(135deg, var(--bg-card) 0%, #16213e 100%);
+    border-radius: 24px; padding: 40px 48px; text-align: center;
+    animation: popScale 0.4s ease-out; max-width: 320px;
+  }
+
+  /* Sync indicator */
+  .sync-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; margin-right: 6px;
+  }
+  .sync-ok { background: var(--green); }
+  .sync-pending { background: var(--gold); animation: pulse 1.5s infinite; }
+  .sync-error { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }
+
+  /* PIN screen */
+  .pin-screen {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 100vh; min-height: 100dvh;
+    text-align: center; padding: 32px;
+  }
+  .pin-input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 32px; font-weight: 700; text-align: center;
+    letter-spacing: 12px; padding: 16px 24px;
+    background: var(--bg-mid); border: 2px solid var(--border);
+    border-radius: 16px; color: var(--text-primary);
+    width: 220px; outline: none;
+    -webkit-text-security: disc;
+  }
+  .pin-input:focus { border-color: var(--gold); }
+  .pin-input::placeholder { letter-spacing: 8px; color: var(--text-muted); }
+
+  /* Hide number input spinners */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ============================================================
+// CONFIG -- edit these to change the app's behaviour
+// ============================================================
+const SYNC_URL = "https://tobys-quest-api.inman-tools.workers.dev/sync"; // e.g. https://tobys-quest-api.yourname.workers.dev/sync
+const REWARD_RATE_PENCE = 200;   // £2.00 per badge
+const BADGE_THRESHOLD   = 30;    // minutes per badge
+
+const CATEGORIES = [
+  { id: "homework", label: "Homework",       icon: "📝", color: "#3B82F6", desc: "Assignments & coursework" },
+  { id: "revision", label: "GCSE Revision",  icon: "📚", color: "#8B5CF6", desc: "Exam prep & study" },
+  { id: "shower",   label: "Shower",         icon: "🚿", color: "#06B6D4", desc: "Daily hygiene" },
+];
+
+const MILESTONES = [
+  { badges: 5,   title: "Getting Started",    icon: "⭐" },
+  { badges: 15,  title: "Building Momentum",  icon: "🔥" },
+  { badges: 30,  title: "Proper Grafter",     icon: "💪" },
+  { badges: 50,  title: "Absolute Legend",     icon: "🏆" },
+  { badges: 100, title: "The GOAT",           icon: "🐐" },
+];
+
+const DEFAULT_STATE = {
+  totalBadges: 0, totalMinutes: 0, balancePence: 0, withdrawn: 0, logs: [],
+  categoryStats: {
+    homework: { minutes: 0, badges: 0, sessions: 0 },
+    revision: { minutes: 0, badges: 0, sessions: 0 },
+    shower:   { minutes: 0, badges: 0, sessions: 0 },
+  },
+};
+
+// ============================================================
+// HELPERS
+// ============================================================
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+const el = (tag, attrs = {}, ...children) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === "className") e.className = v;
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v);
+  }
+  for (const c of children) {
+    if (typeof c === "string") e.appendChild(document.createTextNode(c));
+    else if (c) e.appendChild(c);
+  }
+  return e;
+};
+
+function formatMoney(pence) { return `£${(pence / 100).toFixed(2)}`; }
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function timeAgo(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function hasShoweredToday(logs) {
+  const today = todayKey();
+  return logs.some(log => {
+    if (log.category !== "shower") return false;
+    const d = new Date(log.timestamp);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` === today;
+  });
+}
+
+// ============================================================
+// SYNC ENGINE
+// ============================================================
+class SyncEngine {
+  constructor(pin) {
+    this.pin = pin;
+    this.syncStatus = "pending"; // ok | pending | error
+    this.listeners = [];
+  }
+
+  onStatusChange(fn) { this.listeners.push(fn); }
+  _notify() { this.listeners.forEach(fn => fn(this.syncStatus)); }
+
+  async load() {
+    try {
+      const res = await fetch(`${SYNC_URL}?pin=${encodeURIComponent(this.pin)}`);
+      if (res.status === 401) return { error: "wrong_pin" };
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      this.syncStatus = "ok"; this._notify();
+      if (data && data.totalBadges !== undefined) {
+        return { state: { ...DEFAULT_STATE, ...data, categoryStats: { ...DEFAULT_STATE.categoryStats, ...data.categoryStats } } };
+      }
+      return { state: { ...DEFAULT_STATE } };
+    } catch (e) {
+      console.error("Sync load failed:", e);
+      this.syncStatus = "error"; this._notify();
+      // Fall back to localStorage
+      try {
+        const local = localStorage.getItem("toby-quest-state");
+        if (local) return { state: { ...DEFAULT_STATE, ...JSON.parse(local) } };
+      } catch {}
+      return { state: { ...DEFAULT_STATE } };
+    }
+  }
+
+  async save(state) {
+    // Always save locally as backup
+    try { localStorage.setItem("toby-quest-state", JSON.stringify(state)); } catch {}
+
+    this.syncStatus = "pending"; this._notify();
+    try {
+      const res = await fetch(`${SYNC_URL}?pin=${encodeURIComponent(this.pin)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.syncStatus = "ok"; this._notify();
+    } catch (e) {
+      console.error("Sync save failed:", e);
+      this.syncStatus = "error"; this._notify();
+    }
+  }
+}
+
+// ============================================================
+// APP
+// ============================================================
+class App {
+  constructor(container) {
+    this.root = container;
+    this.state = { ...DEFAULT_STATE };
+    this.sync = null;
+    this.pin = null;
+    this.timerInterval = null;
+    this.timerSeconds = 0;
+    this.timerRunning = false;
+    this.timerCategory = null;
+    this.confirmingDone = false;
+
+    // Check for stored PIN
+    this.pin = localStorage.getItem("toby-quest-pin") || null;
+    if (this.pin) {
+      this.initSync();
+    } else {
+      this.renderPinScreen();
+    }
+  }
+
+  async initSync() {
+    this.sync = new SyncEngine(this.pin);
+    this.sync.onStatusChange(() => this.updateSyncDot());
+    this.renderLoading();
+
+    const result = await this.sync.load();
+    if (result.error === "wrong_pin") {
+      localStorage.removeItem("toby-quest-pin");
+      this.pin = null;
+      this.renderPinScreen("Wrong PIN. Try again.");
+      return;
+    }
+    this.state = result.state;
+    localStorage.setItem("toby-quest-pin", this.pin);
+    this.renderHome();
+  }
+
+  save() {
+    if (this.sync) this.sync.save(this.state);
+  }
+
+  updateSyncDot() {
+    const dot = $(".sync-dot", this.root);
+    if (!dot) return;
+    dot.className = `sync-dot sync-${this.sync.syncStatus}`;
+    const label = $(".sync-label", this.root);
+    if (label) label.textContent = this.sync.syncStatus === "ok" ? "Synced" : this.sync.syncStatus === "pending" ? "Syncing..." : "Offline";
+  }
+
+  // ---- SCREENS ----
+
+  renderLoading() {
+    this.root.innerHTML = "";
+    this.root.appendChild(el("div", { style: {
+      display: "flex", alignItems: "center", justifyContent: "center",
+      minHeight: "100vh", fontFamily: "'Fredoka', sans-serif", fontSize: "22px", color: "#e2e8f0",
+    }}, "Loading..."));
+  }
+
+  renderPinScreen(errorMsg = null) {
+    this.root.innerHTML = "";
+    const screen = el("div", { className: "pin-screen" },
+      el("div", { style: { fontSize: "64px", marginBottom: "16px" }}, "🏅"),
+      el("div", { className: "font-display", style: {
+        fontSize: "28px", fontWeight: "700", marginBottom: "8px",
+        background: "linear-gradient(135deg, #f59e0b, #ef4444, #8b5cf6)",
+        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+      }}, "Toby's Quest"),
+      el("div", { style: { color: "#64748b", fontSize: "14px", marginBottom: "32px" }}, "Enter your PIN to continue"),
+    );
+
+    if (errorMsg) {
+      screen.appendChild(el("div", { style: {
+        color: "#ef4444", fontSize: "14px", marginBottom: "16px", fontWeight: "600",
+      }}, errorMsg));
+    }
+
+    const input = el("input", {
+      className: "pin-input",
+      type: "tel",
+      maxlength: "6",
+      placeholder: "····",
+      inputmode: "numeric",
+      autocomplete: "off",
+    });
+
+    const btn = el("button", {
+      style: {
+        marginTop: "24px", padding: "14px 48px", borderRadius: "14px", border: "none",
+        background: "#22c55e", color: "#fff", fontSize: "16px", fontWeight: "600",
+        cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+      },
+      onClick: () => {
+        const v = input.value.trim();
+        if (v.length >= 4) {
+          this.pin = v;
+          this.initSync();
+        }
+      },
+    }, "Continue");
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btn.click();
+    });
+
+    screen.appendChild(input);
+    screen.appendChild(btn);
+    this.root.appendChild(screen);
+    setTimeout(() => input.focus(), 100);
+  }
+
+  renderHome() {
+    this.root.innerHTML = "";
+    const container = el("div");
+
+    // Header
+    container.appendChild(this._buildHeader());
+
+    // Balance card
+    container.appendChild(this._buildBalanceCard());
+
+    // Category buttons
+    const section = el("div", { style: { marginBottom: "20px" }});
+    section.appendChild(el("div", { style: {
+      color: "#94a3b8", fontSize: "13px", fontWeight: "600",
+      textTransform: "uppercase", letterSpacing: "1px", marginBottom: "12px",
+    }}, "Log activity"));
+
+    const catList = el("div", { style: { display: "flex", flexDirection: "column", gap: "10px" }});
+    const showered = hasShoweredToday(this.state.logs);
+
+    CATEGORIES.forEach(cat => {
+      const done = cat.id === "shower" && showered;
+      const btn = el("button", {
+        style: {
+          display: "flex", alignItems: "center", gap: "16px",
+          background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+          border: `1px solid ${done ? "#22c55e44" : cat.color + "33"}`,
+          borderRadius: "16px", padding: "18px 20px",
+          cursor: done ? "default" : "pointer",
+          width: "100%", textAlign: "left",
+          opacity: done ? "0.7" : "1",
+        },
+        onClick: () => {
+          if (done) return;
+          if (cat.id === "shower") this.renderShowerConfirm();
+          else this.renderModeSelect(cat.id);
+        },
+      },
+        el("div", { style: {
+          width: "48px", height: "48px", borderRadius: "14px",
+          background: done ? "#22c55e22" : `${cat.color}22`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: "24px", flexShrink: "0",
+        }}, done ? "✅" : cat.icon),
+        el("div", { style: { flex: "1" }},
+          el("div", { style: { fontWeight: "600", fontSize: "16px", color: "#e2e8f0" }}, cat.label),
+          el("div", { style: { fontSize: "13px", color: "#64748b" }}, done ? "Done for today" : cat.desc),
+        ),
+        el("div", { style: { textAlign: "right", flexShrink: "0" }},
+          el("div", { style: { fontWeight: "700", color: cat.color, fontSize: "15px" }},
+            `🏅 ${this.state.categoryStats[cat.id].badges}`),
+          ...(cat.id !== "shower" ? [el("div", { style: { fontSize: "12px", color: "#64748b" }},
+            `${Math.round(this.state.categoryStats[cat.id].minutes / 60 * 10) / 10}h total`)] : []),
+        ),
+      );
+      catList.appendChild(btn);
+    });
+
+    section.appendChild(catList);
+    container.appendChild(section);
+
+    // Action buttons
+    const actions = el("div", { style: { display: "flex", gap: "10px", marginBottom: "20px" }});
+    actions.appendChild(el("button", {
+      style: {
+        flex: "1", padding: "14px 16px", borderRadius: "14px", border: "1px solid #334155",
+        background: "#1e293b", color: "#94a3b8", fontSize: "14px", fontWeight: "600", cursor: "pointer",
+      },
+      onClick: () => this.renderHistory(),
+    }, "📋 History"));
+
+    const canWithdraw = this.state.balancePence >= 100;
+    actions.appendChild(el("button", {
+      style: {
+        flex: "1", padding: "14px 16px", borderRadius: "14px", border: "1px solid #334155",
+        background: "#1e293b", color: canWithdraw ? "#94a3b8" : "#475569",
+        fontSize: "14px", fontWeight: "600",
+        cursor: canWithdraw ? "pointer" : "default",
+        opacity: canWithdraw ? "1" : "0.5",
+      },
+      onClick: () => { if (canWithdraw) this.renderWithdraw(); },
+    }, "💰 Cash out"));
+    container.appendChild(actions);
+
+    // Recent logs
+    if (this.state.logs.length > 0) {
+      const recent = el("div");
+      recent.appendChild(el("div", { style: {
+        color: "#94a3b8", fontSize: "13px", fontWeight: "600",
+        textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px",
+      }}, "Recent"));
+      this.state.logs.slice(0, 3).forEach(log => {
+        recent.appendChild(this._buildLogRow(log));
+      });
+      container.appendChild(recent);
+    }
+
+    // Footer
+    container.appendChild(el("div", { style: {
+      textAlign: "center", color: "#334155", fontSize: "11px", marginTop: "32px",
+    }}, "£2 per badge · 30 min study = 1 badge · shower = 1 badge"));
+
+    this.root.appendChild(container);
+  }
+
+  renderModeSelect(categoryId) {
+    this.root.innerHTML = "";
+    const cat = CATEGORIES.find(c => c.id === categoryId);
+    const container = el("div");
+    container.appendChild(this._buildHeader());
+    container.appendChild(this._buildBalanceCard());
+
+    const panel = el("div", { className: "anim-slide-up" });
+    panel.appendChild(this._backBtn(() => this.renderHome()));
+
+    panel.appendChild(el("div", { className: "font-display", style: {
+      fontSize: "20px", color: "#e2e8f0", textAlign: "center", marginBottom: "16px",
+    }}, "How do you want to track?"));
+
+    const makeBtn = (icon, title, desc, onClick) => el("button", {
+      style: {
+        padding: "20px 24px", borderRadius: "16px", border: "1px solid #334155",
+        background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+        color: "#e2e8f0", fontSize: "16px", fontWeight: "600",
+        cursor: "pointer", textAlign: "left", width: "100%", marginBottom: "12px",
+      },
+      onClick,
+    },
+      el("span", {}, `${icon} ${title}`),
+      el("div", { style: { fontSize: "13px", color: "#64748b", fontWeight: "400", marginTop: "4px" }}, desc),
+    );
+
+    panel.appendChild(makeBtn("⏱", "Use timer", "Start a live timer while you work", () => this.renderTimer(categoryId)));
+    panel.appendChild(makeBtn("✏️", "Quick log", "Already done? Log the time manually", () => this.renderQuickLog(categoryId)));
+
+    container.appendChild(panel);
+    this.root.appendChild(container);
+  }
+
+  renderTimer(categoryId) {
+    const cat = CATEGORIES.find(c => c.id === categoryId);
+    this.timerSeconds = 0;
+    this.timerRunning = true;
+    this.timerCategory = categoryId;
+    this.confirmingDone = false;
+
+    this.root.innerHTML = "";
+    const container = el("div");
+    container.appendChild(this._buildHeader());
+
+    const panel = el("div", { className: "anim-slide-up", style: {
+      background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+      borderRadius: "20px", padding: "32px", textAlign: "center",
+      border: `2px solid ${cat.color}33`,
+    }});
+
+    panel.appendChild(el("div", { style: { fontSize: "48px", marginBottom: "8px" }}, cat.icon));
+    panel.appendChild(el("div", { className: "font-display", style: {
+      fontSize: "20px", color: "#e2e8f0", marginBottom: "24px",
+    }}, `${cat.label} in progress`));
+
+    const display = el("div", { className: "font-mono", id: "timer-display", style: {
+      fontSize: "56px", fontWeight: "700", color: cat.color, marginBottom: "16px", letterSpacing: "2px",
+    }}, "00:00");
+
+    const barOuter = el("div", { style: {
+      background: "#1e293b", borderRadius: "12px", height: "12px",
+      marginBottom: "8px", overflow: "hidden", border: "1px solid #334155",
+    }});
+    const barInner = el("div", { id: "timer-bar", style: {
+      height: "100%", borderRadius: "12px",
+      background: `linear-gradient(90deg, ${cat.color}, ${cat.color}cc)`,
+      width: "0%", transition: "width 1s linear",
+    }});
+    barOuter.appendChild(barInner);
+
+    const info = el("div", { id: "timer-info", style: {
+      color: "#64748b", fontSize: "13px", marginBottom: "24px",
+    }}, `Next badge at ${BADGE_THRESHOLD} mins`);
+
+    panel.appendChild(display);
+    panel.appendChild(barOuter);
+    panel.appendChild(info);
+
+    // Buttons
+    const buttons = el("div", { style: { display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }});
+
+    const pauseBtn = el("button", {
+      id: "timer-pause",
+      style: {
+        padding: "12px 28px", borderRadius: "12px", border: "none",
+        background: "#334155", color: "#fff", fontSize: "15px", fontWeight: "600", cursor: "pointer",
+      },
+      onClick: () => {
+        this.timerRunning = !this.timerRunning;
+        pauseBtn.textContent = this.timerRunning ? "⏸ Pause" : "▶ Resume";
+        pauseBtn.style.background = this.timerRunning ? "#334155" : cat.color;
+      },
+    }, "⏸ Pause");
+
+    const doneBtn = el("button", {
+      id: "timer-done",
+      style: {
+        padding: "12px 28px", borderRadius: "12px", border: "none",
+        background: "#22c55e", color: "#fff", fontSize: "15px", fontWeight: "600", cursor: "pointer",
+      },
+      onClick: () => {
+        if (this.timerSeconds < 60 && !this.confirmingDone) {
+          this.confirmingDone = true;
+          doneBtn.textContent = "Tap again to confirm";
+          setTimeout(() => { this.confirmingDone = false; doneBtn.textContent = "✓ Done"; }, 3000);
+          return;
+        }
+        this._stopTimer();
+        this.logActivity(categoryId, Math.floor(this.timerSeconds / 60));
+      },
+    }, "✓ Done");
+
+    const cancelBtn = el("button", {
+      style: {
+        padding: "12px 28px", borderRadius: "12px", border: "none",
+        background: "#991b1b", color: "#fff", fontSize: "15px", fontWeight: "600", cursor: "pointer",
+      },
+      onClick: () => { this._stopTimer(); this.renderHome(); },
+    }, "✕ Cancel");
+
+    buttons.appendChild(pauseBtn);
+    buttons.appendChild(doneBtn);
+    buttons.appendChild(cancelBtn);
+    panel.appendChild(buttons);
+    container.appendChild(panel);
+    this.root.appendChild(container);
+
+    // Start interval
+    this.timerInterval = setInterval(() => {
+      if (!this.timerRunning) return;
+      this.timerSeconds++;
+      const m = Math.floor(this.timerSeconds / 60);
+      const s = this.timerSeconds % 60;
+      display.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+
+      const earned = Math.floor(this.timerSeconds / (BADGE_THRESHOLD * 60));
+      const inCurrent = this.timerSeconds % (BADGE_THRESHOLD * 60);
+      const pct = (inCurrent / (BADGE_THRESHOLD * 60)) * 100;
+      barInner.style.width = `${pct}%`;
+
+      let infoText = "";
+      if (earned > 0) infoText = `<span style="color:#f59e0b">🏅 x${earned} earned so far</span> · `;
+      infoText += `Next badge at ${BADGE_THRESHOLD * (earned + 1)} mins`;
+      info.innerHTML = infoText;
+    }, 1000);
+  }
+
+  _stopTimer() {
+    if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; }
+    this.timerRunning = false;
+  }
+
+  renderQuickLog(categoryId) {
+    const cat = CATEGORIES.find(c => c.id === categoryId);
+    let selectedMins = 30;
+
+    this.root.innerHTML = "";
+    const container = el("div");
+    container.appendChild(this._buildHeader());
+    container.appendChild(this._buildBalanceCard());
+
+    const panel = el("div", { className: "anim-slide-up", style: {
+      background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+      borderRadius: "20px", padding: "32px", textAlign: "center",
+      border: `2px solid ${cat.color}33`,
+    }});
+
+    panel.appendChild(this._backBtn(() => this.renderModeSelect(categoryId)));
+    panel.appendChild(el("div", { style: { fontSize: "48px", marginBottom: "8px" }}, cat.icon));
+    panel.appendChild(el("div", { className: "font-display", style: {
+      fontSize: "20px", color: "#e2e8f0", marginBottom: "24px",
+    }}, `Log ${cat.label}`));
+    panel.appendChild(el("div", { style: { color: "#94a3b8", fontSize: "14px", marginBottom: "16px" }}, "How many minutes did you spend?"));
+
+    const badges = () => Math.floor(selectedMins / BADGE_THRESHOLD);
+    const infoEl = el("div", { id: "ql-info", style: { fontSize: "13px", marginBottom: "20px" }});
+
+    const updateInfo = () => {
+      const b = badges();
+      if (b > 0) {
+        infoEl.style.color = "#f59e0b";
+        infoEl.textContent = `= ${b} badge${b !== 1 ? "s" : ""} (${formatMoney(b * REWARD_RATE_PENCE)})`;
+      } else {
+        infoEl.style.color = "#64748b";
+        infoEl.textContent = `${BADGE_THRESHOLD - selectedMins} more min needed for a badge`;
+      }
+    };
+
+    const btnRow = el("div", { style: { display: "flex", gap: "8px", justifyContent: "center", marginBottom: "12px", flexWrap: "wrap" }});
+    [15, 30, 45, 60, 90, 120].forEach(m => {
+      const b = el("button", {
+        style: {
+          padding: "10px 18px", borderRadius: "10px",
+          background: m === selectedMins ? cat.color : "#1e293b",
+          color: m === selectedMins ? "#fff" : "#94a3b8",
+          fontSize: "14px", fontWeight: "600", cursor: "pointer",
+          border: m === selectedMins ? `2px solid ${cat.color}` : "1px solid #334155",
+        },
+        onClick: () => {
+          selectedMins = m;
+          $$("[data-ql-btn]", panel).forEach(btn => {
+            const v = parseInt(btn.dataset.qlBtn);
+            btn.style.background = v === m ? cat.color : "#1e293b";
+            btn.style.color = v === m ? "#fff" : "#94a3b8";
+            btn.style.border = v === m ? `2px solid ${cat.color}` : "1px solid #334155";
+          });
+          updateInfo();
+        },
+      }, `${m} min`);
+      b.dataset.qlBtn = m;
+      btnRow.appendChild(b);
+    });
+
+    panel.appendChild(btnRow);
+    panel.appendChild(infoEl);
+    updateInfo();
+
+    const actionRow = el("div", { style: { display: "flex", gap: "12px", justifyContent: "center" }});
+    actionRow.appendChild(el("button", {
+      style: {
+        padding: "14px 36px", borderRadius: "12px", border: "none",
+        background: "#22c55e", color: "#fff", fontSize: "16px", fontWeight: "600", cursor: "pointer",
+      },
+      onClick: () => this.logActivity(categoryId, selectedMins),
+    }, "✓ Log it"));
+    actionRow.appendChild(el("button", {
+      style: {
+        padding: "14px 24px", borderRadius: "12px", border: "none",
+        background: "#334155", color: "#94a3b8", fontSize: "15px", cursor: "pointer",
+      },
+      onClick: () => this.renderHome(),
+    }, "Cancel"));
+
+    panel.appendChild(actionRow);
+    container.appendChild(panel);
+    this.root.appendChild(container);
+  }
+
+  renderShowerConfirm() {
+    this.root.innerHTML = "";
+    const container = el("div");
+    container.appendChild(this._buildHeader());
+    container.appendChild(this._buildBalanceCard());
+
+    const cat = CATEGORIES.find(c => c.id === "shower");
+    const panel = el("div", { className: "anim-slide-up", style: {
+      background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+      borderRadius: "20px", padding: "32px", textAlign: "center",
+      border: `2px solid ${cat.color}33`,
+    }});
+
+    panel.appendChild(this._backBtn(() => this.renderHome()));
+    panel.appendChild(el("div", { style: { fontSize: "48px", marginBottom: "8px" }}, "🚿"));
+    panel.appendChild(el("div", { className: "font-display", style: { fontSize: "20px", color: "#e2e8f0", marginBottom: "24px" }}, "Log Shower"));
+    panel.appendChild(el("div", { style: { color: "#94a3b8", fontSize: "14px", marginBottom: "16px" }}, "Confirm you've had a shower today"));
+
+    const row = el("div", { style: { display: "flex", gap: "12px", justifyContent: "center" }});
+    row.appendChild(el("button", {
+      style: {
+        padding: "14px 36px", borderRadius: "12px", border: "none",
+        background: "#22c55e", color: "#fff", fontSize: "16px", fontWeight: "600", cursor: "pointer",
+      },
+      onClick: () => this.logActivity("shower", 0),
+    }, "🚿 Done! +1 badge"));
+    row.appendChild(el("button", {
+      style: {
+        padding: "14px 24px", borderRadius: "12px", border: "none",
+        background: "#334155", color: "#94a3b8", fontSize: "15px", cursor: "pointer",
+      },
+      onClick: () => this.renderHome(),
+    }, "Cancel"));
+    panel.appendChild(row);
+
+    container.appendChild(panel);
+    this.root.appendChild(container);
+  }
+
+  renderHistory() {
+    this.root.innerHTML = "";
+    const container = el("div");
+    container.appendChild(this._buildHeader());
+
+    const panel = el("div", { className: "anim-slide-up" });
+    panel.appendChild(this._backBtn(() => this.renderHome()));
+    panel.appendChild(el("div", { className: "font-display", style: { fontSize: "22px", fontWeight: "600", color: "#e2e8f0", marginBottom: "16px" }}, "Activity history"));
+
+    // Stats grid
+    const grid = el("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "20px" }});
+    const statCard = (value, label, color) => el("div", { style: {
+      background: "#1e293b", borderRadius: "14px", padding: "14px 12px", textAlign: "center",
+    }},
+      el("div", { className: "font-display", style: { fontSize: "22px", fontWeight: "700", color }}, value),
+      el("div", { style: { fontSize: "11px", color: "#64748b" }}, label),
+    );
+    grid.appendChild(statCard(String(this.state.totalBadges), "Badges", "#f59e0b"));
+    grid.appendChild(statCard(`${Math.round(this.state.totalMinutes / 60 * 10) / 10}h`, "Study time", "#3b82f6"));
+    grid.appendChild(statCard(formatMoney(this.state.withdrawn), "Cashed out", "#22c55e"));
+    panel.appendChild(grid);
+
+    if (this.state.logs.length === 0) {
+      panel.appendChild(el("div", { style: { textAlign: "center", color: "#64748b", padding: "32px" }}, "No activity yet. Get started!"));
+    } else {
+      this.state.logs.forEach(log => panel.appendChild(this._buildLogRow(log, true)));
+    }
+
+    container.appendChild(panel);
+    this.root.appendChild(container);
+  }
+
+  renderWithdraw() {
+    this.root.innerHTML = "";
+    const container = el("div");
+    container.appendChild(this._buildHeader());
+
+    let withdrawAmt = "";
+
+    const panel = el("div", { className: "anim-slide-up", style: {
+      background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+      borderRadius: "20px", padding: "32px", textAlign: "center", border: "1px solid #334155",
+    }});
+
+    panel.appendChild(this._backBtn(() => this.renderHome()));
+    panel.appendChild(el("div", { style: { fontSize: "48px", marginBottom: "12px" }}, "💰"));
+    panel.appendChild(el("div", { className: "font-display", style: { fontSize: "22px", fontWeight: "600", color: "#e2e8f0", marginBottom: "8px" }}, "Cash out"));
+    panel.appendChild(el("div", { style: { color: "#64748b", fontSize: "14px", marginBottom: "24px" },
+      html: `Available: <span style="color:#22c55e;font-weight:700">${formatMoney(this.state.balancePence)}</span>`,
+    }));
+
+    const inputWrap = el("div", { style: { position: "relative", maxWidth: "200px", margin: "0 auto", marginBottom: "20px" }});
+    inputWrap.appendChild(el("span", { style: {
+      position: "absolute", left: "16px", top: "50%", transform: "translateY(-50%)",
+      color: "#64748b", fontSize: "20px", fontWeight: "700",
+    }}, "£"));
+    const input = el("input", {
+      type: "number", step: "1.00", min: "1.00",
+      max: (this.state.balancePence / 100).toFixed(2),
+      placeholder: "0.00",
+      style: {
+        width: "100%", padding: "14px 16px 14px 36px", borderRadius: "12px",
+        border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0",
+        fontSize: "20px", fontWeight: "700", textAlign: "center",
+        fontFamily: "'JetBrains Mono', monospace", outline: "none",
+      },
+    });
+    input.addEventListener("input", () => { withdrawAmt = input.value; updateConfirmBtn(); });
+    inputWrap.appendChild(input);
+    panel.appendChild(inputWrap);
+
+    // Preset buttons
+    const presets = el("div", { style: { display: "flex", gap: "8px", justifyContent: "center", marginBottom: "20px", flexWrap: "wrap" }});
+    [5, 10, 20, 50].filter(v => v * 100 <= this.state.balancePence).forEach(v => {
+      presets.appendChild(el("button", {
+        style: {
+          padding: "8px 18px", borderRadius: "10px", border: "1px solid #334155",
+          background: "#1e293b", color: "#94a3b8", fontSize: "14px", cursor: "pointer", fontWeight: "600",
+        },
+        onClick: () => { input.value = v.toFixed(2); withdrawAmt = input.value; updateConfirmBtn(); },
+      }, `£${v}`));
+    });
+    if (this.state.balancePence >= 100) {
+      presets.appendChild(el("button", {
+        style: {
+          padding: "8px 18px", borderRadius: "10px", border: "1px solid #334155",
+          background: "#1e293b", color: "#94a3b8", fontSize: "14px", cursor: "pointer", fontWeight: "600",
+        },
+        onClick: () => { input.value = (this.state.balancePence / 100).toFixed(2); withdrawAmt = input.value; updateConfirmBtn(); },
+      }, "All"));
+    }
+    panel.appendChild(presets);
+
+    const confirmBtn = el("button", {
+      id: "withdraw-confirm",
+      style: {
+        padding: "14px 40px", borderRadius: "14px", border: "none",
+        background: "#334155", color: "#fff", fontSize: "16px", fontWeight: "600",
+        cursor: "default", opacity: "0.5",
+      },
+      onClick: () => {
+        const pence = Math.round(parseFloat(withdrawAmt) * 100);
+        if (isNaN(pence) || pence < 100 || pence > this.state.balancePence) return;
+        const now = Date.now();
+        this.state.balancePence -= pence;
+        this.state.withdrawn += pence;
+        this.state.logs = [{ id: now, category: "withdraw", minutes: 0, badges: 0, earned: -pence, timestamp: now }, ...this.state.logs].slice(0, 200);
+        this.save();
+        this.renderHome();
+      },
+    }, "Confirm cash out");
+
+    const updateConfirmBtn = () => {
+      const valid = withdrawAmt && parseFloat(withdrawAmt) >= 1 && parseFloat(withdrawAmt) * 100 <= this.state.balancePence;
+      confirmBtn.style.background = valid ? "#22c55e" : "#334155";
+      confirmBtn.style.cursor = valid ? "pointer" : "default";
+      confirmBtn.style.opacity = valid ? "1" : "0.5";
+    };
+
+    panel.appendChild(confirmBtn);
+    panel.appendChild(el("div", { style: { color: "#475569", fontSize: "12px", marginTop: "12px" }}, "Minimum £1.00 · Dad will transfer the money to you 🤝"));
+
+    container.appendChild(panel);
+    this.root.appendChild(container);
+    setTimeout(() => input.focus(), 100);
+  }
+
+  // ---- POPUPS ----
+
+  showBadgePopup(count) {
+    const overlay = el("div", { className: "overlay", onClick: () => overlay.remove() });
+    const card = el("div", { className: "overlay-card", style: { border: "2px solid #f59e0b", boxShadow: "0 0 60px rgba(245,158,11,0.3)" }},
+      el("div", { style: { fontSize: "64px", marginBottom: "12px" }}, "🏅"),
+      el("div", { className: "font-display", style: { fontSize: "28px", fontWeight: "600", color: "#f59e0b", marginBottom: "8px" }},
+        count === 1 ? "Badge earned!" : `${count} badges earned!`),
+      el("div", { style: { color: "#94a3b8", fontSize: "15px" }}, `+${formatMoney(count * REWARD_RATE_PENCE)} added to your balance`),
+    );
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 2200);
+  }
+
+  showNoBadgePopup(minutes) {
+    const remaining = BADGE_THRESHOLD - minutes;
+    const overlay = el("div", { className: "overlay", onClick: () => overlay.remove() });
+    const card = el("div", { className: "overlay-card", style: { border: "2px solid #64748b" }},
+      el("div", { style: { fontSize: "48px", marginBottom: "12px" }}, "⏳"),
+      el("div", { className: "font-display", style: { fontSize: "22px", fontWeight: "600", color: "#e2e8f0", marginBottom: "8px" }}, `${minutes} min logged`),
+      el("div", { style: { color: "#94a3b8", fontSize: "14px" }}, `Keep going! ${remaining} more min to earn a badge`),
+    );
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 2500);
+  }
+
+  // ---- CORE LOGIC ----
+
+  logActivity(categoryId, minutes) {
+    const isShower = categoryId === "shower";
+    const badges = isShower ? 1 : Math.floor(minutes / BADGE_THRESHOLD);
+
+    if (badges === 0 && !isShower) {
+      this.showNoBadgePopup(minutes);
+      this.renderHome();
+      return;
+    }
+
+    const now = Date.now();
+    const earnedPence = badges * REWARD_RATE_PENCE;
+
+    this.state.totalBadges += badges;
+    this.state.totalMinutes += isShower ? 0 : minutes;
+    this.state.balancePence += earnedPence;
+    this.state.logs = [{
+      id: now, category: categoryId, minutes: isShower ? 0 : minutes,
+      badges, earned: earnedPence, timestamp: now,
+    }, ...this.state.logs].slice(0, 200);
+
+    const cs = this.state.categoryStats[categoryId];
+    cs.minutes += isShower ? 0 : minutes;
+    cs.badges += badges;
+    cs.sessions += 1;
+
+    this.save();
+    this.renderHome();
+    this.showBadgePopup(badges);
+  }
+
+  // ---- SHARED COMPONENTS ----
+
+  _buildHeader() {
+    const header = el("div", { style: { textAlign: "center", paddingTop: "28px", paddingBottom: "8px" }});
+    header.appendChild(el("div", { className: "font-display", style: {
+      fontSize: "28px", fontWeight: "700",
+      background: "linear-gradient(135deg, #f59e0b, #ef4444, #8b5cf6)",
+      WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+      marginBottom: "4px",
+    }}, "Toby's Quest"));
+    // Sync status
+    const syncRow = el("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }});
+    const statusClass = this.sync ? `sync-${this.sync.syncStatus}` : "sync-pending";
+    const statusText = this.sync ? (this.sync.syncStatus === "ok" ? "Synced" : this.sync.syncStatus === "pending" ? "Syncing..." : "Offline") : "...";
+    syncRow.appendChild(el("span", { className: `sync-dot ${statusClass}` }));
+    syncRow.appendChild(el("span", { className: "sync-label", style: { color: "#64748b", fontSize: "11px" }}, statusText));
+    header.appendChild(syncRow);
+    return header;
+  }
+
+  _buildBalanceCard() {
+    const card = el("div", { className: "anim-slide-up", style: {
+      background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+      borderRadius: "20px", padding: "24px 28px", marginBottom: "20px", border: "1px solid #334155",
+    }});
+
+    const top = el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" }});
+    const left = el("div");
+    left.appendChild(el("div", { style: { color: "#64748b", fontSize: "12px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}, "Balance"));
+    left.appendChild(el("div", { className: "font-display", style: { fontSize: "36px", fontWeight: "700", color: "#22c55e" }}, formatMoney(this.state.balancePence)));
+    const right = el("div", { style: { textAlign: "right" }});
+    right.appendChild(el("div", { className: "font-display", style: { color: "#f59e0b", fontSize: "22px", fontWeight: "700" }}, `🏅 ${this.state.totalBadges}`));
+    right.appendChild(el("div", { style: { color: "#64748b", fontSize: "12px" }}, "badges total"));
+    top.appendChild(left);
+    top.appendChild(right);
+    card.appendChild(top);
+
+    const currentMs = MILESTONES.filter(m => this.state.totalBadges >= m.badges).pop();
+    const nextMs = MILESTONES.find(m => this.state.totalBadges < m.badges);
+
+    if (nextMs) {
+      const progress = el("div", { style: { marginTop: "16px" }});
+      const labels = el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#64748b", marginBottom: "6px" }});
+      labels.appendChild(el("span", {}, currentMs ? `${currentMs.icon} ${currentMs.title}` : "Just starting"));
+      labels.appendChild(el("span", {}, `${nextMs.icon} ${nextMs.title} (${nextMs.badges})`));
+      progress.appendChild(labels);
+      const barOuter = el("div", { style: { background: "#0f172a", borderRadius: "8px", height: "8px", overflow: "hidden" }});
+      barOuter.appendChild(el("div", { style: {
+        height: "100%", borderRadius: "8px",
+        background: "linear-gradient(90deg, #f59e0b, #ef4444)",
+        width: `${(this.state.totalBadges / nextMs.badges) * 100}%`, transition: "width 0.5s ease",
+      }}));
+      progress.appendChild(barOuter);
+      card.appendChild(progress);
+    } else if (currentMs) {
+      card.appendChild(el("div", { style: { marginTop: "12px", color: "#f59e0b", fontSize: "14px", fontWeight: "600" }},
+        `${currentMs.icon} ${currentMs.title} -- max rank achieved!`));
+    }
+
+    return card;
+  }
+
+  _buildLogRow(log, showDate = false) {
+    const cat = CATEGORIES.find(c => c.id === log.category);
+    const row = el("div", { style: {
+      display: "flex", alignItems: "center", gap: "12px",
+      padding: "10px 0", borderBottom: "1px solid #1e293b",
+    }});
+    row.appendChild(el("div", { style: { fontSize: "20px" }}, cat ? cat.icon : "💸"));
+    const mid = el("div", { style: { flex: "1" }});
+    const titleParts = cat ? cat.label : "Cash out";
+    const extra = log.minutes > 0 ? ` · ${log.minutes}m` : "";
+    mid.appendChild(el("div", { style: { fontSize: "14px", fontWeight: "500" },
+      html: titleParts + (log.badges > 0 ? ` <span style="color:#f59e0b">· 🏅x${log.badges}</span>` : "") + `<span style="color:#64748b">${extra}</span>`,
+    }));
+    const timeText = showDate
+      ? new Date(log.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+      : timeAgo(log.timestamp);
+    mid.appendChild(el("div", { style: { fontSize: "12px", color: "#64748b" }}, timeText));
+    row.appendChild(mid);
+    row.appendChild(el("div", { style: {
+      fontSize: "14px", fontWeight: "600",
+      color: log.earned >= 0 ? "#22c55e" : "#ef4444",
+    }}, `${log.earned >= 0 ? "+" : ""}${formatMoney(Math.abs(log.earned))}`));
+    return row;
+  }
+
+  _backBtn(onClick) {
+    return el("button", {
+      style: {
+        background: "none", border: "none", color: "#64748b", fontSize: "14px",
+        cursor: "pointer", marginBottom: "16px", padding: "4px 0",
+      },
+      onClick,
+    }, "← Back");
+  }
+}
+
+// Boot
+new App(document.getElementById("app"));
+</script>
+</body>
+</html>
