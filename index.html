@@ -120,7 +120,7 @@
 // ============================================================
 // CONFIG -- edit these to change the app's behaviour
 // ============================================================
-const SYNC_URL = "PASTE_YOUR_WORKER_URL_HERE/sync"; // e.g. https://tobys-quest-api.yourname.workers.dev/sync
+const SYNC_URL = "https://tobys-quest-api.inman-tools.workers.dev/sync";
 const REWARD_RATE_PENCE = 200;   // £2.00 per badge
 const BADGE_THRESHOLD   = 30;    // minutes per badge
 
@@ -152,6 +152,17 @@ const DEFAULT_STATE = {
 // ============================================================
 // HELPERS
 // ============================================================
+// Safe localStorage wrappers -- school Chromebooks may block storage entirely
+function safeGetItem(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSetItem(key, value) {
+  try { localStorage.setItem(key, value); } catch {}
+}
+function safeRemoveItem(key) {
+  try { localStorage.removeItem(key); } catch {}
+}
+
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 const el = (tag, attrs = {}, ...children) => {
@@ -232,7 +243,7 @@ class SyncEngine {
       this.syncStatus = "error"; this._notify();
       // Fall back to localStorage
       try {
-        const local = localStorage.getItem("toby-quest-state");
+        const local = safeGetItem("toby-quest-state");
         if (local) return { state: { ...DEFAULT_STATE, ...JSON.parse(local) } };
       } catch {}
       return { state: { ...DEFAULT_STATE } };
@@ -241,7 +252,7 @@ class SyncEngine {
 
   async save(state) {
     // Always save locally as backup
-    try { localStorage.setItem("toby-quest-state", JSON.stringify(state)); } catch {}
+    try { safeSetItem("toby-quest-state", JSON.stringify(state)); } catch {}
 
     this.syncStatus = "pending"; this._notify();
     try {
@@ -276,7 +287,7 @@ class App {
     this.confirmingDone = false;
 
     // Check for stored PIN
-    this.pin = localStorage.getItem("toby-quest-pin") || null;
+    this.pin = safeGetItem("toby-quest-pin") || null;
     if (this.pin) {
       this.initSync();
     } else {
@@ -291,13 +302,13 @@ class App {
 
     const result = await this.sync.load();
     if (result.error === "wrong_pin") {
-      localStorage.removeItem("toby-quest-pin");
+      safeRemoveItem("toby-quest-pin");
       this.pin = null;
       this.renderPinScreen("Wrong PIN. Try again.");
       return;
     }
     this.state = result.state;
-    localStorage.setItem("toby-quest-pin", this.pin);
+    safeSetItem("toby-quest-pin", this.pin);
     this.renderHome();
   }
 
@@ -1099,16 +1110,4 @@ class App {
   _backBtn(onClick) {
     return el("button", {
       style: {
-        background: "none", border: "none", color: "#64748b", fontSize: "14px",
-        cursor: "pointer", marginBottom: "16px", padding: "4px 0",
-      },
-      onClick,
-    }, "← Back");
-  }
-}
-
-// Boot
-new App(document.getElementById("app"));
-</script>
-</body>
-</html>
+    
